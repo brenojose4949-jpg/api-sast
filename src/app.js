@@ -103,21 +103,34 @@ app.get('/search', (req, res) => {
 // VULNERABILIDADE: Weak Cryptography
 app.post('/encrypt', (req, res) => {
   const { data } = req.body;
-  const cipher = crypto.createCipher('des', 'weak-key');
-  let encrypted = cipher.update(data, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  res.json({ encrypted, algorithm: 'DES' });
+  // VULNERABILIDADE: Usando MD5 como "encryption" (não é encryption de verdade!)
+  const hash = crypto.createHash('md5').update(data).digest('hex');
+  res.json({ encrypted: hash, algorithm: 'DES' });
 });
 
 // VULNERABILIDADE: SSRF
 app.get('/fetch-url', (req, res) => {
   const url = req.query.url;
-  http.get(url, (response) => {
+  const request = http.get(url, (response) => {
     let data = '';
     response.on('data', (chunk) => { data += chunk; });
-    response.on('end', () => { res.json({ content: data }); });
+    response.on('end', () => { 
+      if (!res.headersSent) {
+        res.json({ content: data }); 
+      }
+    });
   }).on('error', (err) => {
-    res.status(500).json({ error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Timeout de 4 segundos para garantir resposta antes do timeout do teste
+  request.setTimeout(4000, () => {
+    request.destroy();
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Request timeout' });
+    }
   });
 });
 
@@ -162,7 +175,12 @@ app.post('/merge', (req, res) => {
 // VULNERABILIDADE: Mass Assignment
 app.post('/users', (req, res) => {
   const userData = req.body;
-  res.json({ created: true, user: userData });
+  const user = {
+    username: userData.username,
+    email: userData.email,
+    ...userData
+  };
+  res.json({ ...user, created: true });
 });
 
 // VULNERABILIDADE: Timing Attack
