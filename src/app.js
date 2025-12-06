@@ -39,14 +39,22 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Configuração do banco de dados PostgreSQL
-const pool = new Pool({
-  host: process.env.DB_HOST_PROD || process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER_PROD || process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD_PROD || process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME_PROD || process.env.DB_NAME || 'testdb',
-  port: process.env.DB_PORT_PROD || process.env.DB_PORT || 5432,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+// Suporta tanto connection string completa (DATABASE_URL) quanto parâmetros individuais
+const poolConfig = process.env.DATABASE_URL 
+  ? {
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    }
+  : {
+      host: process.env.DB_HOST_PROD || process.env.DB_HOST || 'localhost',
+      user: process.env.DB_USER_PROD || process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD_PROD || process.env.DB_PASSWORD || '',
+      database: process.env.DB_NAME_PROD || process.env.DB_NAME || 'testdb',
+      port: process.env.DB_PORT_PROD || process.env.DB_PORT || 5432,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    };
+
+const pool = new Pool(poolConfig);
 
 // Testar conexão
 pool.query('SELECT NOW()', (err, res) => {
