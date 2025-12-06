@@ -82,10 +82,6 @@ jobs:
           NEW_VERSION: ${{ env.NEW_VERSION }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
-          DB_HOST_PROD: ${{ secrets.DB_HOST_PROD }}
-          DB_USER_PROD: ${{ secrets.DB_USER_PROD }}
-          DB_PASSWORD_PROD: ${{ secrets.DB_PASSWORD_PROD }}
-          DB_NAME_PROD: ${{ secrets.DB_NAME_PROD }}
         run: |
           if [ -z "${RENDER_SERVICE_ID}" ]; then
             echo "RENDER_SERVICE_ID não configurado" >&2
@@ -94,4 +90,4 @@ jobs:
           curl -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
             -H "Authorization: Bearer ${RENDER_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d "{\"clearCache\":true,\"image\":\"${{ env.REGISTRY_IMAGE }}:${NEW_VERSION}\",\"envVars\":[{\"key\":\"DB_HOST_PROD\",\"value\":\"${DB_HOST_PROD}\"},{\"key\":\"DB_USER_PROD\",\"value\":\"${DB_USER_PROD}\"},{\"key\":\"DB_PASSWORD_PROD\",\"value\":\"${DB_PASSWORD_PROD}\"},{\"key\":\"DB_NAME_PROD\",\"value\":\"${DB_NAME_PROD}\"}]}"
+            -d "{\"clearCache\":true,\"image\":\"${{ env.REGISTRY_IMAGE }}:${NEW_VERSION}\"}"
