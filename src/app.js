@@ -7,11 +7,36 @@ const crypto = require('crypto');
 const { exec } = require('child_process');
 const fs = require('fs');
 const http = require('http');
+const swaggerUi = require('swagger-ui-express');
+const swaggerJsdoc = require('swagger-jsdoc');
 require('dotenv').config();
 
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Configuração do Swagger
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'API SAST - Vulnerable Application',
+      version: '1.0.0',
+      description: 'API com vulnerabilidades intencionais para análise SAST',
+    },
+    servers: [
+      {
+        url: process.env.NODE_ENV === 'production' 
+          ? 'https://seu-app.onrender.com' 
+          : 'http://localhost:3000',
+      },
+    ],
+  },
+  apis: ['./src/app.js'],
+};
+
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Configuração do banco de dados PostgreSQL
 const pool = new Pool({
@@ -32,11 +57,20 @@ pool.query('SELECT NOW()', (err, res) => {
   }
 });
 
-// Rota raiz
+/**
+ * @swagger
+ * /:
+ *   get:
+ *     summary: Rota raiz da API
+ *     responses:
+ *       200:
+ *         description: Informações da API
+ */
 app.get('/', (req, res) => {
   res.json({ 
     message: 'API SAST - Aplicação de teste para análise de segurança',
-    version: '1.0.0'
+    version: '1.0.0',
+    swagger: '/api-docs'
   });
 });
 
