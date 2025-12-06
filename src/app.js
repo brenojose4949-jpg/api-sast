@@ -3,6 +3,10 @@ const express = require('express');
 const { Pool } = require('pg');
 const bodyParser = require('body-parser');
 const xml2js = require('xml2js');
+const crypto = require('crypto');
+const { exec } = require('child_process');
+const fs = require('fs');
+const http = require('http');
 require('dotenv').config();
 
 const app = express();
@@ -32,90 +36,154 @@ pool.query('SELECT NOW()', (err, res) => {
 app.get('/', (req, res) => {
   res.json({ 
     message: 'API SAST - Aplicação de teste para análise de segurança',
-    version: '1.0.0',
-    endpoints: ['/users/:id', '/search', '/upload', '/xml']
+    version: '1.0.0'
   });
 });
 
-// Rota com SQL Injection (vulnerabilidade intencional)
+// VULNERABILIDADE: SQL Injection
 app.get('/users/:id', (req, res) => {
   const userId = req.params.id;
-  // VULNERABILIDADE: SQL Injection - não usa prepared statements
   const query = `SELECT * FROM users WHERE id = ${userId}`;
   
   pool.query(query, (err, results) => {
     if (err) {
-      return res.status(500).json({ error: 'Erro no banco de dados' });
+      return res.status(500).json({ error: err.message, stack: err.stack });
     }
     res.json(results.rows);
   });
 });
 
-// Rota com Command Injection (vulnerabilidade intencional)
-app.get('/search', (req, res) => {
-  const searchTerm = req.query.term;
-  // VULNERABILIDADE: Command Injection
-  const { exec } = require('child_process');
-  exec(`grep -r "${searchTerm}" ./`, (error, stdout, stderr) => {
-    if (error) {
-      return res.status(500).json({ error: 'Erro na busca' });
+// VULNERABILIDADE: SQL Injection no login
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
+  
+  pool.query(query, (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
     }
-    res.json({ results: stdout });
+    if (results.rows.length > 0) {
+      res.json({ success: true, user: results.rows[0] });
+    } else {
+      res.status(401).json({ success: false });
+    }
   });
 });
 
-// Rota com Path Traversal (vulnerabilidade intencional)
-app.get('/file', (req, res) => {
-  const fileName = req.query.name;
-  // VULNERABILIDADE: Path Traversal
-  const fs = require('fs');
-  fs.readFile(`./uploads/${fileName}`, 'utf8', (err, data) => {
+// VULNERABILIDADE: Command Injection
+app.post('/execute', (req, res) => {
+  const { command } = req.body;
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      return res.status(500).json({ error: error.message, stderr });
+    }
+    res.json({ output: stdout });
+  });
+});
+
+// VULNERABILIDADE: Path Traversal
+app.get('/download', (req, res) => {
+  const fileName = req.query.file;
+  const filePath = `./uploads/${fileName}`;
+  
+  fs.readFile(filePath, 'utf8', (err, data) => {
     if (err) {
-      return res.status(404).json({ error: 'Arquivo não encontrado' });
+      return res.status(404).json({ error: 'File not found' });
     }
     res.send(data);
   });
 });
 
-// Rota com XXE (vulnerabilidade intencional)
-app.post('/xml', (req, res) => {
-  const xmlData = req.body.xml;
-  // VULNERABILIDADE: XXE - XML External Entity
-  const parser = new xml2js.Parser({
-    explicitArray: false,
-    // Não desabilita entidades externas
-  });
-  
-  parser.parseString(xmlData, (err, result) => {
-    if (err) {
-      return res.status(400).json({ error: 'XML inválido' });
-    }
-    res.json(result);
+// VULNERABILIDADE: XSS
+app.get('/search', (req, res) => {
+  const query = req.query.q;
+  res.send(`<h1>Search results for: ${query}</h1>`);
+});
+
+// VULNERABILIDADE: Weak Cryptography
+app.post('/encrypt', (req, res) => {
+  const { data } = req.body;
+  const cipher = crypto.createCipher('des', 'weak-key');
+  let encrypted = cipher.update(data, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  res.json({ encrypted, algorithm: 'DES' });
+});
+
+// VULNERABILIDADE: SSRF
+app.get('/fetch-url', (req, res) => {
+  const url = req.query.url;
+  http.get(url, (response) => {
+    let data = '';
+    response.on('data', (chunk) => { data += chunk; });
+    response.on('end', () => { res.json({ content: data }); });
+  }).on('error', (err) => {
+    res.status(500).json({ error: err.message });
   });
 });
 
-// Rota com hardcoded credentials (vulnerabilidade intencional)
-app.post('/login', (req, res) => {
-  const { username, password } = req.body;
-  // VULNERABILIDADE: Credenciais hardcoded
-  const adminUser = 'admin';
-  const adminPass = 'admin123';
-  
-  if (username === adminUser && password === adminPass) {
-    res.json({ success: true, message: 'Login realizado' });
-  } else {
-    res.status(401).json({ success: false, message: 'Credenciais inválidas' });
+// VULNERABILIDADE: Code Injection via eval
+app.post('/calculate', (req, res) => {
+  const { expression } = req.body;
+  try {
+    const result = eval(expression);
+    res.json({ result });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// VULNERABILIDADE: ReDoS
+app.get('/validate-email', (req, res) => {
+  const email = req.query.email;
+  const emailRegex = /^([a-zA-Z0-9_\.\-])+\@(([a-zA-Z0-9\-])+\.)+([a-zA-Z0-9]{2,4})+$/;
+  const isValid = emailRegex.test(email);
+  res.json({ email, valid: isValid });
+});
+
+// VULNERABILIDADE: Insecure Random
+app.get('/generate-token', (req, res) => {
+  const token = Math.random().toString(36).substring(2);
+  res.json({ token });
+});
+
+// VULNERABILIDADE: Prototype Pollution
+app.post('/merge', (req, res) => {
+  const { target, source } = req.body;
+  const merge = (obj1, obj2) => {
+    for (let key in obj2) {
+      obj1[key] = obj2[key];
+    }
+    return obj1;
+  };
+  const result = merge(target || {}, source || {});
+  res.json({ result });
+});
+
+// VULNERABILIDADE: Mass Assignment
+app.post('/users', (req, res) => {
+  const userData = req.body;
+  res.json({ created: true, user: userData });
+});
+
+// VULNERABILIDADE: Timing Attack
+app.post('/verify-token', (req, res) => {
+  const { token } = req.body;
+  const validToken = 'secret-token-12345';
+  let isValid = token === validToken;
+  res.json({ valid: isValid });
+});
+
+// Error handler que expõe detalhes
+app.use((err, req, res, next) => {
+  res.status(500).json({
+    error: err.message,
+    stack: err.stack,
+    details: err
+  });
 });
 
 const PORT = process.env.PORT || 3000;
 
-// Só inicia o servidor se não estiver em ambiente de teste
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
