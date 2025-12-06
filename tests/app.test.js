@@ -4,23 +4,24 @@ const request = require('supertest');
 const { expect } = require('chai');
 const sinon = require('sinon');
 
-// Mock do módulo mysql antes de importar o app
-const mysqlMock = {
-  createConnection: () => ({
-    query: (query, params, callback) => {
-      if (typeof params === 'function') {
-        callback = params;
-        params = null;
+// Mock do módulo pg (PostgreSQL) antes de importar o app
+const pgMock = {
+  Pool: class {
+    query(query, callback) {
+      if (typeof callback === 'function') {
+        callback(null, { 
+          rows: [{ id: 1, username: 'test', email: 'test@test.com', now: new Date() }] 
+        });
       }
-      callback(null, [{ id: 1, username: 'test', email: 'test@test.com' }]);
-    },
-    connect: (callback) => callback && callback(null),
-    end: () => {}
-  })
+      return Promise.resolve({ 
+        rows: [{ id: 1, username: 'test', email: 'test@test.com' }] 
+      });
+    }
+  }
 };
 
-require.cache[require.resolve('mysql')] = {
-  exports: mysqlMock
+require.cache[require.resolve('pg')] = {
+  exports: pgMock
 };
 
 const app = require('../src/app');

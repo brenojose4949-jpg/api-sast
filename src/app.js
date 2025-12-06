@@ -1,6 +1,6 @@
 // src/app.js - Aplicação Node.js com vulnerabilidades para SAST
 const express = require('express');
-const mysql = require('mysql');
+const { Pool } = require('pg');
 const bodyParser = require('body-parser');
 const xml2js = require('xml2js');
 require('dotenv').config();
@@ -9,21 +9,22 @@ const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Configuração do banco de dados
-const dbConfig = {
+// Configuração do banco de dados PostgreSQL
+const pool = new Pool({
   host: process.env.DB_HOST_PROD || process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER_PROD || process.env.DB_USER || 'root',
+  user: process.env.DB_USER_PROD || process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD_PROD || process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME_PROD || process.env.DB_NAME || 'testdb'
-};
+  database: process.env.DB_NAME_PROD || process.env.DB_NAME || 'testdb',
+  port: process.env.DB_PORT_PROD || process.env.DB_PORT || 5432,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
 
-const db = mysql.createConnection(dbConfig);
-
-db.connect((err) => {
+// Testar conexão
+pool.query('SELECT NOW()', (err, res) => {
   if (err) {
     console.error('Erro ao conectar ao banco de dados:', err);
   } else {
-    console.log('Conectado ao banco de dados');
+    console.log('Conectado ao PostgreSQL:', res.rows[0]);
   }
 });
 
@@ -42,11 +43,11 @@ app.get('/users/:id', (req, res) => {
   // VULNERABILIDADE: SQL Injection - não usa prepared statements
   const query = `SELECT * FROM users WHERE id = ${userId}`;
   
-  db.query(query, (err, results) => {
+  pool.query(query, (err, results) => {
     if (err) {
       return res.status(500).json({ error: 'Erro no banco de dados' });
     }
-    res.json(results);
+    res.json(results.rows);
   });
 });
 
